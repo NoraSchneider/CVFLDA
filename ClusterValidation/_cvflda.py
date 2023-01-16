@@ -16,13 +16,13 @@ class CVFLDA:
 
     X: ndarray, the data matrix.
     y: ndarray, the original input labels of the clustering for X
-    alpha: float, default = 0.05, significance level for tests
+    safety_margin: int, default = 2, margin of safety for decision
     sequential: bool, default = True, sequential or simultaneous merging.
 
     adjusted_y: ndarray, the adjusted cluster labels after validating.
     """
 
-    def __init__(self, X, y, alpha=0.05, sequential=True):
+    def __init__(self, X, y, safety_margin=2, sequential=True):
         # Check if X and labels are in the right format (right dimensions, sizes etc.)
         self.original_labels = y
         self.X, y = check_X_y(X, y)
@@ -32,7 +32,7 @@ class CVFLDA:
         self.y = self.le.fit_transform(y)
         self.adjusted_y = None
 
-        self.alpha = alpha
+        self.safety_margin = safety_margin
         self.sequential = sequential
 
     def validate(self):
@@ -174,9 +174,7 @@ class CVFLDA:
                 var_merged, var_var_merged = _variance_in_direction(cluster_merged, u)
                 n_merged = len(cluster_merged)
 
-                testresult = _compare_variances(var_i, var_var_i, n_i, var_j, var_var_j, n_j,
-                                                var_merged,
-                                                var_var_merged, n_merged, self.alpha)
+                testresult = _compare_variances(var_i, var_var_i,  var_j, var_var_j, self.safety_margin)
 
                 if not testresult:
                     result[i, j] = (2 * var_merged) / (var_i + var_j)
@@ -301,58 +299,35 @@ def _merged_cluster(cluster_i, cluster_j, direction):
     c_merged = np.concatenate((c_i_distances, c_j_distances), axis=0)
 
     return c_merged
-
-
-def _compare_variances(var_i, var_var_i, n_i, var_j, var_var_j, n_j, var_m, var_var_m, n_m, alpha):
+        
+def _compare_variances(var_i, var_var_i,  var_j, var_var_j, var_m, safety_margin):
     """
     This function compares the variances of three clusters (with the two-sample welch test)
     :param var_i: float
             variance of cluster i
     :param var_var_i: float
             variance of variance of cluster i
-    :param n_i: int
-            number of objects in cluster i
+    
     :param var_j: float
             variance of cluster j
     :param var_var_j: float
             variance of variance of cluster j
-    :param n_j: float
-            number of objects in cluster j
+    
     :param var_m: float
             variance of cluster merged
-    :param var_var_m: float
-            variance variance of cluster merged
-    :param n_m: int
-            number of objects in cluster merged
-    :param alpha: float
-            significance level
-
+    
+    :param safety_margin: float
+            multiple of standart deviation as margin of saftey
     :return: boolean
             Test-decision (True = true clusters, False = false clusters)
     """
 
-    # If variance of variance is equal to zero, the simple comparison is conducted
-    if var_var_i == 0 or var_var_j == 0 or var_var_m == 0:
-        return (var_i < var_m) and (var_j < var_m)
 
+
+ 
+    std_i=np.sqrt(var_var_i)
+    std_j=np.sqrt(var_var_j)
+    if (var_i + safety_margin * std_i < var_m) and (var_j + safety_margin * std_j < var_m):
+        return True
     else:
-
-        # Compare variances of Cluster_i and Cluster_m
-        S_x = (var_var_i / n_i) + (var_var_m / n_m)
-        t_x = (var_i - var_m) / math.sqrt(S_x)
-        df_x = S_x * S_x / (((1 / (n_i - 1)) * (var_var_i / n_i) * (var_var_i / n_i)) + (
-                (1 / (n_m - 1)) * (var_var_m / n_m) * (var_var_m / n_m)))
-        crit_x = t.ppf(alpha, df_x)
-
-        # Compare variances of Cluster_j and Cluster_m
-        S_y = (var_var_j / n_j) + (var_var_m / n_m)
-        t_y = (var_j - var_m) / math.sqrt(S_y)
-        df_y = S_y * S_y / (((1 / (n_j - 1)) * (var_var_j / n_j) * (var_var_j / n_j)) + (
-                (1 / (n_m - 1)) * (var_var_m / n_m) * (var_var_m / n_m)))
-        crit_y = t.ppf(alpha, df_y)
-
-        # Testdecision
-        if (t_x < crit_x) and (t_y < crit_y):
-            return True
-        else:
-            return False
+        return False
